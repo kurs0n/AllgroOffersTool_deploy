@@ -5,6 +5,7 @@ import { URLSearchParams } from 'url';
 import mongoose, { Mongoose } from "mongoose";
 import cron from "node-cron";
 import User from "./models/user"
+import Offers from "./models/offers";
 
 dotenv.config();
 
@@ -93,12 +94,13 @@ mongoose
   .then( async(result) => {
     console.log("Connected with database");
     app.listen(process.env.PORT || 3000);
-    
-    cron.schedule('*/5 * * * *', async () => {
+    let access_token = ""
+
+    cron.schedule('* * * * *', async () => {
       try {
         const seller = await User.findOne({email: CLIENT_MAIL});
         if (seller) {
-          var access_token = seller.access_token
+          access_token = seller.access_token
         } else {
           console.log("No seller found with the provided email.");
         }
@@ -106,6 +108,32 @@ mongoose
         console.error("Error fetching seller:", error);
       }
 
+
+      const headers = {
+        'Authorization': `Bearer ${access_token}`,
+        'Accept-Language': 'pl-PL',
+        'Content-Type': 'application/json',
+      };
+      
+      const offers = await Offers.find()
+      console.log(Offers)
+
+      // const response = await axios.get(`https://api.allegro/sale/offers/${}/rating`, { headers });
+      // console.log(response.data);
+
+      // TODO: Save offers to database or process them as needed.
+
+      // Example: Save offers to MongoDB
+      // await Offer.insertMany(response.data.offers);
+
+      // Example: Process offers and update their status
+      // for (const offer of response.data.offers) {
+      //   const updatedOffer = await Offer.findByIdAndUpdate(offer.id, { status: 'ACTIVE' }, { new: true });
+      //   console.log(`Offer ${updatedOffer.id} has been updated.`);
+      // }
+
+      // Example: Delete expired offers from MongoDB
+      // const
       
 
 
