@@ -4,8 +4,11 @@ import express, { ErrorRequestHandler } from "express";
 import { URLSearchParams } from 'url';
 import mongoose, { Mongoose } from "mongoose";
 import cron from "node-cron";
+import nodemailer from 'nodemailer';
 import User from "./models/user"
 import Offers from "./models/offers";
+import { off } from 'process';
+import getNextToken from "./refresh_tokens"
 
 dotenv.config();
 
@@ -64,7 +67,7 @@ async function getAccessToken(deviceCode: string): Promise<any> {
 }
 
 
-async function awaitForAccessToken(interval: number, deviceCode: string): Promise<string | null> {
+async function awaitForAccessToken(interval: number, deviceCode: string): Promise<any> {
   while (true) {
     await new Promise(resolve => setTimeout(resolve, interval * 1000));
       try {
@@ -79,14 +82,83 @@ async function awaitForAccessToken(interval: number, deviceCode: string): Promis
               return resultAccessToken;
           }
       } catch (error) {
-          console.error('Error in awaitForAccessToken:', error);
+          console.error('User has not authorized the device code yet.');
           // throw error;
       }
   }
 }
 
+async function getTokens (): Promise<any> {
+  getCode().then(async response => {
+    console.log(response);
+    var tokens = null;
+    tokens = await awaitForAccessToken(response.interval, response.device_code)
+    if (tokens) {
+      const user = await User.findOneAndUpdate({email: CLIENT_MAIL}, {access_token: tokens.access_token, refresh_token: tokens.refresh_token}, {new: true});
+      console.log('User updated:', user);
+    }
 
-var access_token = null 
+  }).catch(error => {
+      console.error('Error:', error.data);
+  });
+} 
+
+async function checkRatingsAndUpdate (offer: any, newData: any): Promise<any> {
+  let message = `Nowe opinie w aukcji: ${offer.link} \n`
+  if (offer.totalResponses == 0) {
+    await Offers.findByIdAndUpdate(offer._id, {ratings: newData.scoreDistribution, totalResponses: newData.totalResponses}, {new: true});
+    return "Nothing changed"
+  }
+
+  if (offer.totalResponses < newData.totalResponses) {
+    for (let i = 0; i < offer.ratings.length; i++) {
+      console.log('Ratings:', offer.ratings[i].name)
+
+      if (offer.ratings[i].count < newData.scoreDistribution[i].count) {
+        console.log('New count:', newData.scoreDistribution[i].count);
+        console.log('Old count:', offer.ratings[i].count);
+        let difference = newData.scoreDistribution[i].count - offer.ratings[i].count
+        message += `${offer.ratings[i].name} ★: ${difference} nowych opinii \n`
+      }
+    }
+    await Offers.findByIdAndUpdate(offer._id, {ratings: newData.scoreDistribution, totalResponses: newData.totalResponses}, {new: true});
+    return message;
+  } else {
+    return "Nothing changed";
+  }
+}
+
+async function sendNotification (messages: string[]) {
+  let final_message = ''
+  for (let message of messages) {
+    final_message += message + '\n'
+  }
+  var transporter = nodemailer.createTransport({
+    service: "Gmail",
+    host: "smtp.gmail.com",
+    port: 465,
+    auth: {
+      user: process.env.SENDING_EMAIL,
+      pass: process.env.EMAIL_PASSWORD
+    }
+  });
+  
+  var mailOptions = {
+    from: process.env.SENDING_EMAIL,
+    to: process.env.CLIENT_MAIL,
+    subject: 'Masz nowe opinie pod swoimi aukcjami!',
+    text: final_message
+  };
+  
+  transporter.sendMail(mailOptions, function(error, info){
+    if (error) {
+      console.log(error);
+    } else {
+      console.log('Email sent: ' + info.response);
+    }
+  });
+}
+
 
 mongoose
   .connect(process.env.DATABASE_URL as string)
@@ -95,12 +167,20 @@ mongoose
     console.log("Connected with database");
     app.listen(process.env.PORT || 3000);
     let access_token = ""
+    let refresh_token = ""
 
-    cron.schedule('* * * * *', async () => {
+    cron.schedule('*/5 * * * *', async () => {
+      console.log("Cron start")
       try {
         const seller = await User.findOne({email: CLIENT_MAIL});
         if (seller) {
-          access_token = seller.access_token
+          if (seller.access_token != "") {
+            access_token = seller.access_token
+            refresh_token = seller.refresh_token
+          } else {
+            getTokens()
+            access_token = seller.access_token
+          }
         } else {
           console.log("No seller found with the provided email.");
         }
@@ -109,46 +189,67 @@ mongoose
       }
 
 
-      const headers = {
+      let headers = {
         'Authorization': `Bearer ${access_token}`,
+        'Accept': 'application/vnd.allegro.public.v1+json',
         'Accept-Language': 'pl-PL',
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/vnd.allegro.public.v1+json',
       };
       
       const offers = await Offers.find()
-      console.log(Offers)
+      let messagesArray = [];
+      for (let offer of offers) {
+        let response = null;
+        try {
+          response = await axios.get(`https://api.allegro.pl/sale/offers/${offer.id}/rating`, { headers });
+        } catch (err: any) {
+          if (err.response.status == 401) {
+            console.log("Access token expired. Refreshing...");
+            const newTokens = await getNextToken(refresh_token);
+            if (newTokens) {
+              await User.findOneAndUpdate({email: CLIENT_MAIL}, {access_token: newTokens.access_token, refresh_token: newTokens.refresh_token}, {new: true});
+              access_token = newTokens.access_token;
+              console.log("Tokens updated successfully")
+              headers = {
+                'Authorization': `Bearer ${access_token}`,
+                'Accept': 'application/vnd.allegro.public.v1+json',
+                'Accept-Language': 'pl-PL',
+                'Content-Type': 'application/vnd.allegro.public.v1+json',
+              };
+              response = await axios.get(`https://api.allegro.pl/sale/offers/${offer.id}/rating`, { headers });
 
-      // const response = await axios.get(`https://api.allegro/sale/offers/${}/rating`, { headers });
-      // console.log(response.data);
+            } else {
+              console.log("Failed to refresh access token.");
+            }
+          }
+          else {
+            console.log(err)
+          }         
+        }
+        
+        if (!offer.ratings) {
+          await Offers.findOneAndUpdate(
+            {id: offer.id},
+            {
+              $set: {
+                ratings: response!.data.scoreDistribution,
+                totalResponses: response!.data.totalResponses,
+              }
+            }
 
-      // TODO: Save offers to database or process them as needed.
-
-      // Example: Save offers to MongoDB
-      // await Offer.insertMany(response.data.offers);
-
-      // Example: Process offers and update their status
-      // for (const offer of response.data.offers) {
-      //   const updatedOffer = await Offer.findByIdAndUpdate(offer.id, { status: 'ACTIVE' }, { new: true });
-      //   console.log(`Offer ${updatedOffer.id} has been updated.`);
-      // }
-
-      // Example: Delete expired offers from MongoDB
-      // const
-      
-
-
-    });
+          )
+        }
+        const message = await checkRatingsAndUpdate(offer, response!.data);
+        if (message != "Nothing changed") {
+          messagesArray.push(message);
+        }
+      }
+      console.log(messagesArray);
+      if (messagesArray.length > 0) {
+        await sendNotification(messagesArray);
+      }
+      else {
+        console.log("No new ratings found in any of the offers.");
+      }
+  })
 })
-
-
-
-
-
-// getCode().then(async response => {
-
-//     access_token = await awaitForAccessToken(response.interval, response.device_code)
-//     console.log('Access token:', access_token);
-
-// }).catch(error => {
-//     console.error('Error:', error);
-// });

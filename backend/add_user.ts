@@ -13,4 +13,4 @@ async function addUser(email: string, accessToken: string, refreshToken: string)
     } catch (error) {
       console.error('Error adding user:', error);
     }
-  }
+}

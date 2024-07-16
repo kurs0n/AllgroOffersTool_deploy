@@ -9,6 +9,14 @@ const offersSchema = new mongoose.Schema({
     link: {
         type: String,
         required: true
+    },
+    ratings: [{
+        name: String,
+        count: Number
+    }],
+    totalResponses: {
+        type: Number,
+        default: 0
     }
 });
 
