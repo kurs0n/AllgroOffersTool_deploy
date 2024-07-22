@@ -123,6 +123,10 @@ async function checkRatingsAndUpdate (offer: any, newData: any): Promise<any> {
     }
     await Offers.findByIdAndUpdate(offer._id, {ratings: newData.scoreDistribution, totalResponses: newData.totalResponses}, {new: true});
     return message;
+  } else if (offer.totalResponses > newData.totalResponses) {
+    console.log("Someone deleted the rating")
+    await Offers.findByIdAndUpdate(offer._id, {ratings: newData.scoreDistribution, totalResponses: newData.totalResponses}, {new: true});
+    return "Nothing changed";
   } else {
     return "Nothing changed";
   }
