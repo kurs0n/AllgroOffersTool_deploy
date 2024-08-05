@@ -20,8 +20,8 @@ const CLIENT_SECRET = process.env.CLIENT_SECRET || 'default_client_secret';
 const TOKEN_URL = "https://allegro.pl/auth/oauth/token";
 const REDIRECT_URI = "";
 function getNextToken(token) {
-    var _a, _b;
     return __awaiter(this, void 0, void 0, function* () {
+        var _a, _b;
         try {
             const data = new URLSearchParams({
                 grant_type: 'refresh_token',

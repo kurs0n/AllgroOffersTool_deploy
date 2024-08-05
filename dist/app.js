@@ -136,11 +136,6 @@ function checkRatingsAndUpdate(offer, newData) {
             yield offers_1.default.findByIdAndUpdate(offer._id, { ratings: newData.scoreDistribution, totalResponses: newData.totalResponses }, { new: true });
             return message;
         }
-        else if (offer.totalResponses > newData.totalResponses) {
-            console.log("Someone deleted the rating");
-            yield offers_1.default.findByIdAndUpdate(offer._id, { ratings: newData.scoreDistribution, totalResponses: newData.totalResponses }, { new: true });
-            return "Nothing changed";
-        }
         else {
             return "Nothing changed";
         }
