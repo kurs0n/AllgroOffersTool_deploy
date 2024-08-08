@@ -105,23 +105,30 @@ async function checkRatingsAndUpdate (offer: any, newData: any): Promise<any> {
     await Offers.findByIdAndUpdate(offer._id, {ratings: newData.scoreDistribution, totalResponses: newData.totalResponses}, {new: true});
     return "Nothing changed"
   }
-
-  if (offer.totalResponses < newData.totalResponses) {
+    let something_changed = false
     for (let i = 0; i < offer.ratings.length; i++) {
-      console.log('Ratings:', offer.ratings[i].name)
+      console.log('Current offer ratings:', offer.ratings[i].name, 'Count:', offer.ratings[i].count)
+      console.log('Incoming ratings:', newData.scoreDistribution[i].name, 'Count:', newData.scoreDistribution[i].count)
 
       if (offer.ratings[i].count < newData.scoreDistribution[i].count) {
         console.log('New count:', newData.scoreDistribution[i].count);
         console.log('Old count:', offer.ratings[i].count);
         let difference = newData.scoreDistribution[i].count - offer.ratings[i].count
         message += `${offer.ratings[i].name} ★: ${difference} nowych opinii \n`
+        something_changed = true
       }
     }
+    
     await Offers.findByIdAndUpdate(offer._id, {ratings: newData.scoreDistribution, totalResponses: newData.totalResponses}, {new: true});
-    return message;
-  } else {
-    return "Nothing changed";
-  }
+    if (something_changed) {
+      console.log(message);
+      return message;
+    }
+    else {
+      console.log("Nothing changed");
+      return "Nothing changed"
+    }
+
 }
 
 async function sendNotification (messages: string[]) {
