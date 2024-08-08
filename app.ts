@@ -1,18 +1,13 @@
 import axios from 'axios';
 import dotenv from "dotenv";
-import express, { ErrorRequestHandler,Router,Handler } from "express";
-import { URLSearchParams } from 'url';
-import mongoose, { Mongoose } from "mongoose";
-import cron from "node-cron";
+import mongoose from "mongoose";
 import nodemailer from 'nodemailer';
 import User from "./models/user"
 import Offers from "./models/offers";
-import { off } from 'process';
 import getNextToken from "./refresh_tokens"
+import { exit } from 'process';
 
 dotenv.config();
-
-const app = express();
 
 const CLIENT_ID = process.env.CLIENT_ID || 'default_client_id';
 const CLIENT_SECRET = process.env.CLIENT_SECRET || 'default_client_secret';
@@ -160,117 +155,91 @@ async function sendNotification (messages: string[]) {
   });
 }
 
-
-app.use(express.json());
-
-app.use((req, res, next) => {
-  //cors policy
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "OPTIONS, GET, POST, PUT, PATCH, DELETE",
-  );
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, input, X-Requested-With, Origin, Accept",
-  );
-  next();
-});
-
-
-app.use("/",Router().get("/",async  (req,res,next)=>{
-  console.log("Cron start")
-  let access_token = ""
-  let refresh_token = ""
-  try {
-    const seller = await User.findOne({email: CLIENT_MAIL});
-    if (seller) {
-      if (seller.access_token != "") {
-        access_token = seller.access_token
-        refresh_token = seller.refresh_token
-      } else {
-        getTokens()
-        access_token = seller.access_token
-      }
-    } else {
-      console.log("No seller found with the provided email.");
-    }
-  } catch (error) {
-    console.error("Error fetching seller:", error);
-  }
-
-
-  let headers = {
-    'Authorization': `Bearer ${access_token}`,
-    'Accept': 'application/vnd.allegro.public.v1+json',
-    'Accept-Language': 'pl-PL',
-    'Content-Type': 'application/vnd.allegro.public.v1+json',
-  };
-  
-  const offers = await Offers.find()
-  let messagesArray = [];
-  for (let offer of offers) {
-    let response = null;
-    try {
-      response = await axios.get(`https://api.allegro.pl/sale/offers/${offer.id}/rating`, { headers });
-    } catch (err: any) {
-      if (err.response.status == 401) {
-        console.log("Access token expired. Refreshing...");
-        const newTokens = await getNextToken(refresh_token);
-        if (newTokens) {
-          await User.findOneAndUpdate({email: CLIENT_MAIL}, {access_token: newTokens.access_token, refresh_token: newTokens.refresh_token}, {new: true});
-          access_token = newTokens.access_token;
-          console.log("Tokens updated successfully")
-          headers = {
-            'Authorization': `Bearer ${access_token}`,
-            'Accept': 'application/vnd.allegro.public.v1+json',
-            'Accept-Language': 'pl-PL',
-            'Content-Type': 'application/vnd.allegro.public.v1+json',
-          };
-          response = await axios.get(`https://api.allegro.pl/sale/offers/${offer.id}/rating`, { headers });
-
-        } else {
-          console.log("Failed to refresh access token.");
-        }
-      }
-      else {
-        console.log(err)
-      }         
-    }
-    
-    if (!offer.ratings) {
-      await Offers.findOneAndUpdate(
-        {id: offer.id},
-        {
-          $set: {
-            ratings: response!.data.scoreDistribution,
-            totalResponses: response!.data.totalResponses,
-          }
-        }
-
-      )
-    }
-    const message = await checkRatingsAndUpdate(offer, response!.data);
-    if (message != "Nothing changed") {
-      messagesArray.push(message);
-    }
-  }
-  console.log(messagesArray);
-  if (messagesArray.length > 0) {
-    await sendNotification(messagesArray);
-  }
-  else {
-    console.log("No new ratings found in any of the offers.");
-  }
-  return res.status(200).json({
-    message: "Worked"
-  });
-}));
-
-
 mongoose
   .connect(process.env.DATABASE_URL as string)
   .then( async(result) => {
-    console.log("Connected with database");
-    app.listen(process.env.PORT || 3000);
+    console.log("Started program"); 
+    let access_token = ""
+    let refresh_token = ""
+    try {
+      const seller = await User.findOne({email: CLIENT_MAIL});
+      if (seller) {
+        if (seller.access_token != "") {
+          access_token = seller.access_token
+          refresh_token = seller.refresh_token
+        } else {
+          getTokens()
+          access_token = seller.access_token
+        }
+      } else {
+        console.log("No seller found with the provided email.");
+      }
+    } catch (error) {
+      console.error("Error fetching seller:", error);
+    }
+  
+  
+    let headers = {
+      'Authorization': `Bearer ${access_token}`,
+      'Accept': 'application/vnd.allegro.public.v1+json',
+      'Accept-Language': 'pl-PL',
+      'Content-Type': 'application/vnd.allegro.public.v1+json',
+    };
+    
+    const offers = await Offers.find()
+    let messagesArray = [];
+    for (let offer of offers) {
+      let response = null;
+      try {
+        response = await axios.get(`https://api.allegro.pl/sale/offers/${offer.id}/rating`, { headers });
+      } catch (err: any) {
+        if (err.response.status == 401) {
+          console.log("Access token expired. Refreshing...");
+          const newTokens = await getNextToken(refresh_token);
+          if (newTokens) {
+            await User.findOneAndUpdate({email: CLIENT_MAIL}, {access_token: newTokens.access_token, refresh_token: newTokens.refresh_token}, {new: true});
+            access_token = newTokens.access_token;
+            console.log("Tokens updated successfully")
+            headers = {
+              'Authorization': `Bearer ${access_token}`,
+              'Accept': 'application/vnd.allegro.public.v1+json',
+              'Accept-Language': 'pl-PL',
+              'Content-Type': 'application/vnd.allegro.public.v1+json',
+            };
+            response = await axios.get(`https://api.allegro.pl/sale/offers/${offer.id}/rating`, { headers });
+  
+          } else {
+            console.log("Failed to refresh access token.");
+          }
+        }
+        else {
+          console.log(err)
+        }         
+      }
+      
+      if (!offer.ratings) {
+        await Offers.findOneAndUpdate(
+          {id: offer.id},
+          {
+            $set: {
+              ratings: response!.data.scoreDistribution,
+              totalResponses: response!.data.totalResponses,
+            }
+          }
+  
+        )
+      }
+      const message = await checkRatingsAndUpdate(offer, response!.data);
+      if (message != "Nothing changed") {
+        messagesArray.push(message);
+      }
+    }
+    console.log(messagesArray);
+    if (messagesArray.length > 0) {
+      await sendNotification(messagesArray);
+    }
+    else {
+      console.log("No new ratings found in any of the offers.");
+    }
+    return exit(0);
 })
