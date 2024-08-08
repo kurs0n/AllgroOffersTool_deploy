@@ -13,17 +13,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const axios_1 = __importDefault(require("axios"));
-const dotenv_1 = __importDefault(require("dotenv"));
-const express_1 = __importDefault(require("express"));
-const url_1 = require("url");
 const mongoose_1 = __importDefault(require("mongoose"));
-const node_cron_1 = __importDefault(require("node-cron"));
 const nodemailer_1 = __importDefault(require("nodemailer"));
 const user_1 = __importDefault(require("./models/user"));
 const offers_1 = __importDefault(require("./models/offers"));
 const refresh_tokens_1 = __importDefault(require("./refresh_tokens"));
-dotenv_1.default.config();
-const app = (0, express_1.default)();
+const process_1 = require("process");
 const CLIENT_ID = process.env.CLIENT_ID || 'default_client_id';
 const CLIENT_SECRET = process.env.CLIENT_SECRET || 'default_client_secret';
 const CLIENT_MAIL = process.env.CLIENT_MAIL || "wojtekmarcela@interia.pl";
@@ -32,7 +27,7 @@ const TOKEN_URL = "https://allegro.pl/auth/oauth/token";
 function getCode() {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            const payload = new url_1.URLSearchParams();
+            const payload = new URLSearchParams();
             payload.append('client_id', CLIENT_ID);
             const headers = {
                 'Content-type': 'application/x-www-form-urlencoded'
@@ -176,86 +171,84 @@ mongoose_1.default
     .connect(process.env.DATABASE_URL)
     .then((result) => __awaiter(void 0, void 0, void 0, function* () {
     console.log("Connected with database");
-    app.listen(process.env.PORT || 3000);
+    console.log("Started program");
     let access_token = "";
     let refresh_token = "";
-    node_cron_1.default.schedule('*/5 * * * *', () => __awaiter(void 0, void 0, void 0, function* () {
-        console.log("Cron start");
+    try {
+        const seller = yield user_1.default.findOne({ email: CLIENT_MAIL });
+        if (seller) {
+            if (seller.access_token != "") {
+                access_token = seller.access_token;
+                refresh_token = seller.refresh_token;
+            }
+            else {
+                getTokens();
+                access_token = seller.access_token;
+            }
+        }
+        else {
+            console.log("No seller found with the provided email.");
+        }
+    }
+    catch (error) {
+        console.error("Error fetching seller:", error);
+    }
+    let headers = {
+        'Authorization': `Bearer ${access_token}`,
+        'Accept': 'application/vnd.allegro.public.v1+json',
+        'Accept-Language': 'pl-PL',
+        'Content-Type': 'application/vnd.allegro.public.v1+json',
+    };
+    const offers = yield offers_1.default.find();
+    let messagesArray = [];
+    for (let offer of offers) {
+        let response = null;
         try {
-            const seller = yield user_1.default.findOne({ email: CLIENT_MAIL });
-            if (seller) {
-                if (seller.access_token != "") {
-                    access_token = seller.access_token;
-                    refresh_token = seller.refresh_token;
+            response = yield axios_1.default.get(`https://api.allegro.pl/sale/offers/${offer.id}/rating`, { headers });
+        }
+        catch (err) {
+            if (err.response.status == 401) {
+                console.log("Access token expired. Refreshing...");
+                const newTokens = yield (0, refresh_tokens_1.default)(refresh_token);
+                if (newTokens) {
+                    yield user_1.default.findOneAndUpdate({ email: CLIENT_MAIL }, { access_token: newTokens.access_token, refresh_token: newTokens.refresh_token }, { new: true });
+                    access_token = newTokens.access_token;
+                    console.log("Tokens updated successfully");
+                    headers = {
+                        'Authorization': `Bearer ${access_token}`,
+                        'Accept': 'application/vnd.allegro.public.v1+json',
+                        'Accept-Language': 'pl-PL',
+                        'Content-Type': 'application/vnd.allegro.public.v1+json',
+                    };
+                    response = yield axios_1.default.get(`https://api.allegro.pl/sale/offers/${offer.id}/rating`, { headers });
                 }
                 else {
-                    getTokens();
-                    access_token = seller.access_token;
+                    console.log("Failed to refresh access token.");
                 }
             }
             else {
-                console.log("No seller found with the provided email.");
+                console.log(err);
             }
         }
-        catch (error) {
-            console.error("Error fetching seller:", error);
-        }
-        let headers = {
-            'Authorization': `Bearer ${access_token}`,
-            'Accept': 'application/vnd.allegro.public.v1+json',
-            'Accept-Language': 'pl-PL',
-            'Content-Type': 'application/vnd.allegro.public.v1+json',
-        };
-        const offers = yield offers_1.default.find();
-        let messagesArray = [];
-        for (let offer of offers) {
-            let response = null;
-            try {
-                response = yield axios_1.default.get(`https://api.allegro.pl/sale/offers/${offer.id}/rating`, { headers });
-            }
-            catch (err) {
-                if (err.response.status == 401) {
-                    console.log("Access token expired. Refreshing...");
-                    const newTokens = yield (0, refresh_tokens_1.default)(refresh_token);
-                    if (newTokens) {
-                        yield user_1.default.findOneAndUpdate({ email: CLIENT_MAIL }, { access_token: newTokens.access_token, refresh_token: newTokens.refresh_token }, { new: true });
-                        access_token = newTokens.access_token;
-                        console.log("Tokens updated successfully");
-                        headers = {
-                            'Authorization': `Bearer ${access_token}`,
-                            'Accept': 'application/vnd.allegro.public.v1+json',
-                            'Accept-Language': 'pl-PL',
-                            'Content-Type': 'application/vnd.allegro.public.v1+json',
-                        };
-                        response = yield axios_1.default.get(`https://api.allegro.pl/sale/offers/${offer.id}/rating`, { headers });
-                    }
-                    else {
-                        console.log("Failed to refresh access token.");
-                    }
+        if (!offer.ratings) {
+            yield offers_1.default.findOneAndUpdate({ id: offer.id }, {
+                $set: {
+                    ratings: response.data.scoreDistribution,
+                    totalResponses: response.data.totalResponses,
                 }
-                else {
-                    console.log(err);
-                }
-            }
-            if (!offer.ratings) {
-                yield offers_1.default.findOneAndUpdate({ id: offer.id }, {
-                    $set: {
-                        ratings: response.data.scoreDistribution,
-                        totalResponses: response.data.totalResponses,
-                    }
-                });
-            }
-            const message = yield checkRatingsAndUpdate(offer, response.data);
-            if (message != "Nothing changed") {
-                messagesArray.push(message);
-            }
+            });
         }
-        console.log(messagesArray);
-        if (messagesArray.length > 0) {
-            yield sendNotification(messagesArray);
+        const message = yield checkRatingsAndUpdate(offer, response.data);
+        if (message != "Nothing changed") {
+            messagesArray.push(message);
         }
-        else {
-            console.log("No new ratings found in any of the offers.");
-        }
-    }));
+    }
+    console.log(messagesArray);
+    if (messagesArray.length > 0) {
+        yield sendNotification(messagesArray);
+    }
+    else {
+        console.log("No new ratings found in any of the offers.");
+    }
+    return (0, process_1.exit)(0);
 }));
