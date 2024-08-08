@@ -28,6 +28,7 @@ async function getCode() {
         const headers = {
             'Content-type': 'application/x-www-form-urlencoded'
         };
+        
 
         const response = await axios.post(CODE_URL, payload.toString(), {
             auth: {
