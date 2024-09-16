@@ -121,6 +121,7 @@ async function checkRatingsAndUpdate (offer: any, newData: any): Promise<any> {
     
     await Offers.findByIdAndUpdate(offer._id, {ratings: newData.scoreDistribution, totalResponses: newData.totalResponses}, {new: true});
     if (something_changed) {
+      console.log(message);
       return message;
     }
     else {
@@ -152,7 +153,6 @@ async function sendNotification (messages: string[]) {
     text: final_message
   };
   
-  console.log(final_message);
   transporter.sendMail(mailOptions, function(error, info){
     if (error) {
       console.log(error);
@@ -243,7 +243,6 @@ mongoose
     }
     console.log(messagesArray);
     if (messagesArray.length > 0) {
-      console.log("Sending email notification...");
       await sendNotification(messagesArray);
     }
     else {
