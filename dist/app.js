@@ -13,12 +13,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const axios_1 = __importDefault(require("axios"));
+const dotenv_1 = __importDefault(require("dotenv"));
 const mongoose_1 = __importDefault(require("mongoose"));
 const nodemailer_1 = __importDefault(require("nodemailer"));
 const user_1 = __importDefault(require("./models/user"));
 const offers_1 = __importDefault(require("./models/offers"));
 const refresh_tokens_1 = __importDefault(require("./refresh_tokens"));
 const process_1 = require("process");
+dotenv_1.default.config();
 const CLIENT_ID = process.env.CLIENT_ID || 'default_client_id';
 const CLIENT_SECRET = process.env.CLIENT_SECRET || 'default_client_secret';
 const CLIENT_MAIL = process.env.CLIENT_MAIL || "wojtekmarcela@interia.pl";
@@ -118,20 +120,25 @@ function checkRatingsAndUpdate(offer, newData) {
             yield offers_1.default.findByIdAndUpdate(offer._id, { ratings: newData.scoreDistribution, totalResponses: newData.totalResponses }, { new: true });
             return "Nothing changed";
         }
-        if (offer.totalResponses < newData.totalResponses) {
-            for (let i = 0; i < offer.ratings.length; i++) {
-                console.log('Ratings:', offer.ratings[i].name);
-                if (offer.ratings[i].count < newData.scoreDistribution[i].count) {
-                    console.log('New count:', newData.scoreDistribution[i].count);
-                    console.log('Old count:', offer.ratings[i].count);
-                    let difference = newData.scoreDistribution[i].count - offer.ratings[i].count;
-                    message += `${offer.ratings[i].name} ★: ${difference} nowych opinii \n`;
-                }
+        let something_changed = false;
+        for (let i = 0; i < offer.ratings.length; i++) {
+            console.log('Current offer ratings:', offer.ratings[i].name, 'Count:', offer.ratings[i].count);
+            console.log('Incoming ratings:', newData.scoreDistribution[i].name, 'Count:', newData.scoreDistribution[i].count);
+            if (offer.ratings[i].count < newData.scoreDistribution[i].count) {
+                console.log('New count:', newData.scoreDistribution[i].count);
+                console.log('Old count:', offer.ratings[i].count);
+                let difference = newData.scoreDistribution[i].count - offer.ratings[i].count;
+                message += `${offer.ratings[i].name} ★: ${difference} nowych opinii \n`;
+                something_changed = true;
             }
-            yield offers_1.default.findByIdAndUpdate(offer._id, { ratings: newData.scoreDistribution, totalResponses: newData.totalResponses }, { new: true });
+        }
+        yield offers_1.default.findByIdAndUpdate(offer._id, { ratings: newData.scoreDistribution, totalResponses: newData.totalResponses }, { new: true });
+        if (something_changed) {
+            console.log(message);
             return message;
         }
         else {
+            console.log("Nothing changed");
             return "Nothing changed";
         }
     });
@@ -170,7 +177,6 @@ function sendNotification(messages) {
 mongoose_1.default
     .connect(process.env.DATABASE_URL)
     .then((result) => __awaiter(void 0, void 0, void 0, function* () {
-    console.log("Connected with database");
     console.log("Started program");
     let access_token = "";
     let refresh_token = "";
@@ -182,7 +188,7 @@ mongoose_1.default
                 refresh_token = seller.refresh_token;
             }
             else {
-                getTokens();
+                yield getTokens();
                 access_token = seller.access_token;
             }
         }

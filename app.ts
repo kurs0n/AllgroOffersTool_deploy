@@ -175,7 +175,7 @@ mongoose
           access_token = seller.access_token
           refresh_token = seller.refresh_token
         } else {
-          getTokens()
+          await getTokens()
           access_token = seller.access_token
         }
       } else {
