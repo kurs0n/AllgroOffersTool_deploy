@@ -3,18 +3,23 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "build": "npx tsc",
+    "build": "esbuild index.ts add_user.ts add_offers.ts refresh_tokens.ts ./models/offers.ts ./models/user.ts --bundle --minify --sourcemap --platform=node --target=es2020 --outdir=dist",
     "start": "node ./dist/app.js",
-    "dev": "nodemon app.ts"
+    "dev": "nodemon app.ts",
+    "prebuild": "rm -rf dist",
+    "postbuild": "cd dist && cp ../.env ./.env && zip -r index.zip ./* ./*/*"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
+  "type": "module",
   "dependencies": {
+    "@types/aws-lambda": "^8.10.145",
     "axios": "^1.7.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "esbuild": "^0.24.0",
     "express": "^4.19.2",
     "mongoose": "^8.5.1",
     "node-cron": "^3.0.3",
