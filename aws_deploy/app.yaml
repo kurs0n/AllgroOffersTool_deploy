@@ -1,0 +1,14 @@
+runtime: nodejs20
+instance_class: F2
+
+env_variables:
+  CLIENT_ID: a09234c809404ec8a33626f80c06fa02
+  CLIENT_SECRET: 6XynWI8AVhRwVJcJBuglODa09lbBnXH2ele0NqaOORDa8tirHcta9rRgH042IXJr
+  DATABASE_URL: mongodb+srv://Wojtke7:momo123@allegrooffers.15x7cht.mongodb.net/?retryWrites=true&w=majority&appName=AllegroOffers
+  CLIENT_MAIL: Erosklep18@gmail.com
+  EMAIL_PASSWORD: lydcudxtzpqwyvlm
+  SENDING_EMAIL: allegroalert777@gmail.com
+
+handlers:
+  - url: /.*
+    script: auto

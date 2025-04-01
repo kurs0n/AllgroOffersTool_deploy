@@ -4,3 +4,4 @@
 ./new_app
 ./aws_deploy/.env
 ./aws_deploy/node_modules
+.DS_Store

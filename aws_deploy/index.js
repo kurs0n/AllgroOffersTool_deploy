@@ -6,6 +6,7 @@ import Offers from "./models/offers.js";
 import getNextToken from "./refresh_tokens.js";
 import https from "https";
 import dotenv from "dotenv";
+import express from "express";
 
 const CODE_URL = "https://allegro.pl/auth/oauth/device"
 const TOKEN_URL = "https://allegro.pl/auth/oauth/token"
@@ -214,6 +215,12 @@ async function retryOperation(operation, retries, delay) {
   throw lastError; // If all attempts fail, throw the last error
 }
 
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", async (req, res) => {
   dotenv.config();
   await mongoose.connect(process.env.DATABASE_URL);
   console.log("Started program");
@@ -318,5 +325,12 @@ async function retryOperation(operation, retries, delay) {
   } else {
     console.log("No new ratings found in any of the offers.");
     console.log("Script finished!"); 
-    process.exit();
+    // process.exit();
   }
+  res.send("Script finished!");
+  mongoose.connection.close();
+});
+
+app.listen(PORT, () => {
+  console.log(`Server is listening on port ${PORT}`);
+});
